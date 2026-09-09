@@ -3,27 +3,37 @@ AI Sales Copilot - Lead Prospector (simple form UI)
 ======================================================
 No more curl commands - just type a business type and location(s), click the button.
 Results are also automatically saved to Airtable by the CrewAI service.
-
-Run locally:
-    pip install streamlit pandas requests
-    streamlit run streamlit_prospector.py
-
-Make sure your CrewAI service (crewai_service.py) is running first, either locally
-(uvicorn on localhost:8000) or deployed on Railway.
 """
 
+import threading
+import time
+import uvicorn
 import streamlit as st
 import requests
 import pandas as pd
 
 st.set_page_config(page_title="Lead Prospector", page_icon="🔍", layout="wide")
 
-# Change this once you deploy to Railway - or set it in .streamlit/secrets.toml as
-# CREWAI_SERVICE_URL = "https://your-service.up.railway.app"
-try:
-    CREWAI_SERVICE_URL = st.secrets["CREWAI_SERVICE_URL"]
-except Exception:
-    CREWAI_SERVICE_URL = "http://localhost:8000"
+# --- FASTAPI BACKEND AUTOMATIC START IN BACKGROUND ---
+@st.cache_resource
+def start_fastapi_backend():
+    def run_server():
+        try:
+            from crewai_service import app as fastapi_app
+            uvicorn.run(fastapi_app, host="127.0.0.1", port=8000, log_level="error")
+        except Exception as e:
+            print(f"Backend Server Error: {e}")
+
+    thread = threading.Thread(target=run_server, daemon=True)
+    thread.start()
+    time.sleep(3) # Waiting for FastAPI to initialize
+
+# Launch backend once when the app starts
+start_fastapi_backend()
+
+# Set local backend URL
+CREWAI_SERVICE_URL = "http://127.0.0.1:8000"
+# ----------------------------------------------------
 
 st.title("🔍 AI Sales Copilot — Lead Prospector")
 st.caption("Type any business type and location(s). Results are scraped fresh and saved to Airtable automatically.")
@@ -100,8 +110,7 @@ if submitted:
 
             except requests.exceptions.ConnectionError:
                 st.error(
-                    "Couldn't reach the CrewAI service. Make sure it's running "
-                    f"at {CREWAI_SERVICE_URL} (check your uvicorn terminal)."
+                    "Couldn't reach the inner backend service. Please wait a few seconds for background startup or check your environment keys."
                 )
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
